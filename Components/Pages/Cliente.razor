@@ -1,0 +1,683 @@
+@page "/cliente"
+@rendermode InteractiveServer
+
+@using System.ComponentModel.DataAnnotations
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+
+<PageTitle>Clientes</PageTitle>
+
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Clientes</h3>
+
+        <button type="button"
+                class="btn btn-primary"
+                @onclick="NuevoCliente">
+            <i class="bi bi-plus-circle"></i>
+            Nuevo
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(mensaje))
+    {
+        <div class="alert alert-success alert-dismissible fade show">
+            @mensaje
+            <button type="button"
+                    class="btn-close"
+                    @onclick="() => mensaje = string.Empty">
+            </button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger alert-dismissible fade show">
+            @error
+            <button type="button"
+                    class="btn-close"
+                    @onclick="() => error = string.Empty">
+            </button>
+        </div>
+    }
+
+    @if (cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    }
+    else if (clientes.Count == 0)
+    {
+        <div class="alert alert-info">
+            No existen clientes registrados.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover table-bordered align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>CUI</th>
+                        <th>NIT</th>
+                        <th>Nombres</th>
+                        <th>Apellidos</th>
+                        <th>Dirección</th>
+                        <th>Teléfono</th>
+                        <th>Fecha nacimiento</th>
+                        <th style="width: 150px;">Acciones</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var cliente in ClientesPaginados)
+                    {
+                        <tr>
+                            <td>@cliente.cui</td>
+                            <td>@cliente.nit</td>
+                            <td>@cliente.nombres</td>
+                            <td>@cliente.apellidos</td>
+                            <td>@cliente.direccion</td>
+                            <td>@cliente.telefono</td>
+                            <td>
+                                @(cliente.fecha_nacimiento?.ToString("dd/MM/yyyy"))
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button"
+                                            class="btn btn-warning"
+                                            title="Editar"
+                                            @onclick="() => EditarCliente(cliente)">
+                                        Editar
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-danger"
+                                            title="Eliminar"
+                                            @onclick="() => SolicitarEliminar(cliente)">
+                                        Eliminar
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (TotalPaginas > 1)
+        {
+            <nav aria-label="Paginación de clientes">
+                <ul class="pagination justify-content-center">
+
+                    <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                        <button type="button"
+                                class="page-link"
+                                @onclick="PaginaAnterior"
+                                disabled="@(paginaActual == 1)">
+                            Anterior
+                        </button>
+                    </li>
+
+                    @for (int pagina = 1; pagina <= TotalPaginas; pagina++)
+                    {
+                        var paginaNumero = pagina;
+
+                        <li class="page-item @(paginaActual == paginaNumero ? "active" : "")">
+                            <button type="button"
+                                    class="page-link"
+                                    @onclick="() => IrPagina(paginaNumero)">
+                                @paginaNumero
+                            </button>
+                        </li>
+                    }
+
+                    <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                        <button type="button"
+                                class="page-link"
+                                @onclick="PaginaSiguiente"
+                                disabled="@(paginaActual == TotalPaginas)">
+                            Siguiente
+                        </button>
+                    </li>
+
+                </ul>
+            </nav>
+        }
+    }
+</div>
+
+
+@* =========================================================
+   MODAL CREAR / EDITAR
+   ========================================================= *@
+
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block"
+         tabindex="-1"
+         role="dialog"
+         aria-modal="true">
+
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @(modoEdicion ? "Editar Cliente" : "Nuevo Cliente")
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close"
+                            aria-label="Cerrar"
+                            @onclick="CerrarModal">
+                    </button>
+                </div>
+
+                <EditForm Model="clienteActual"
+                          OnValidSubmit="GuardarCliente">
+
+                    <DataAnnotationsValidator />
+
+                    <div class="modal-body">
+
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="row g-3">
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    CUI
+                                </label>
+
+                                <InputText class="form-control"
+                                           @bind-Value="clienteActual.cui" />
+
+                                <ValidationMessage For="@(() => clienteActual.cui)"
+                                                   class="text-danger" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    NIT
+                                </label>
+
+                                <InputText class="form-control"
+                                           @bind-Value="clienteActual.nit" />
+
+                                <ValidationMessage For="@(() => clienteActual.nit)"
+                                                   class="text-danger" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Nombres <span class="text-danger">*</span>
+                                </label>
+
+                                <InputText class="form-control"
+                                           @bind-Value="clienteActual.nombres" />
+
+                                <ValidationMessage For="@(() => clienteActual.nombres)"
+                                                   class="text-danger" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Apellidos <span class="text-danger">*</span>
+                                </label>
+
+                                <InputText class="form-control"
+                                           @bind-Value="clienteActual.apellidos" />
+
+                                <ValidationMessage For="@(() => clienteActual.apellidos)"
+                                                   class="text-danger" />
+                            </div>
+
+                            <div class="col-md-12">
+                                <label class="form-label">
+                                    Dirección
+                                </label>
+
+                                <InputText class="form-control"
+                                           @bind-Value="clienteActual.direccion" />
+
+                                <ValidationMessage For="@(() => clienteActual.direccion)"
+                                                   class="text-danger" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Teléfono
+                                </label>
+
+                                <InputText class="form-control"
+                                           @bind-Value="clienteActual.telefono" />
+
+                                <ValidationMessage For="@(() => clienteActual.telefono)"
+                                                   class="text-danger" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Fecha de nacimiento
+                                </label>
+
+                                <InputDate TValue="DateTime?"
+                                           class="form-control"
+                                           @bind-Value="clienteActual.fecha_nacimiento" />
+
+                                <ValidationMessage For="@(() => clienteActual.fecha_nacimiento)"
+                                                   class="text-danger" />
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+
+                        <button type="button"
+                                class="btn btn-secondary"
+                                @onclick="CerrarModal">
+                            Cancelar
+                        </button>
+
+                        <button type="submit"
+                                class="btn btn-primary"
+                                disabled="@guardando">
+
+                            @if (guardando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                                <span>Guardando...</span>
+                            }
+                            else
+                            {
+                                <span>Guardar</span>
+                            }
+
+                        </button>
+
+                    </div>
+
+                </EditForm>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@* =========================================================
+   MODAL CONFIRMAR ELIMINACIÓN
+   ========================================================= *@
+
+@if (mostrarConfirmacion)
+{
+    <div class="modal fade show d-block"
+         tabindex="-1"
+         role="dialog"
+         aria-modal="true">
+
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        Confirmar eliminación
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close"
+                            aria-label="Cerrar"
+                            @onclick="CerrarConfirmacion">
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <p>
+                        ¿Está seguro que desea eliminar al cliente
+                        <strong>
+                            @clienteEliminar?.nombres
+                            @clienteEliminar?.apellidos
+                        </strong>?
+                    </p>
+
+                    <p class="text-danger mb-0">
+                        Esta acción no se puede deshacer.
+                    </p>
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            @onclick="CerrarConfirmacion">
+                        Cancelar
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-danger"
+                            @onclick="EliminarCliente"
+                            disabled="@eliminando">
+
+                        @if (eliminando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Eliminando...</span>
+                        }
+                        else
+                        {
+                            <span>Eliminar</span>
+                        }
+
+                    </button>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@code {
+
+    private const int RegistrosPorPagina = 10;
+
+    private List<ClienteModel> clientes = new();
+
+    private ClienteModel clienteActual = new();
+
+    private ClienteModel? clienteEliminar;
+
+    private bool cargando = true;
+    private bool guardando = false;
+    private bool eliminando = false;
+
+    private bool mostrarModal = false;
+    private bool mostrarConfirmacion = false;
+
+    private bool modoEdicion = false;
+
+    private int paginaActual = 1;
+
+    private string mensaje = string.Empty;
+    private string error = string.Empty;
+
+
+    private int TotalPaginas =>
+        clientes.Count == 0
+            ? 1
+            : (int)Math.Ceiling(
+                clientes.Count / (double)RegistrosPorPagina);
+
+
+    private IEnumerable<ClienteModel> ClientesPaginados =>
+        clientes
+            .Skip((paginaActual - 1) * RegistrosPorPagina)
+            .Take(RegistrosPorPagina);
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientes();
+    }
+
+
+    private async Task CargarClientes()
+    {
+        try
+        {
+            cargando = true;
+            error = string.Empty;
+
+            var resultado =
+                await Http.GetFromJsonAsync<List<ClienteModel>>(
+                    "api/Clientes");
+
+            clientes = resultado ?? new List<ClienteModel>();
+
+            if (paginaActual > TotalPaginas)
+            {
+                paginaActual = TotalPaginas;
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al cargar los clientes: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+
+    private void NuevoCliente()
+    {
+        clienteActual = new ClienteModel();
+
+        modoEdicion = false;
+
+        mensaje = string.Empty;
+        error = string.Empty;
+
+        mostrarModal = true;
+    }
+
+
+    private void EditarCliente(ClienteModel cliente)
+    {
+        clienteActual = new ClienteModel
+        {
+            Id_cliente = cliente.Id_cliente,
+            cui = cliente.cui,
+            nit = cliente.nit,
+            nombres = cliente.nombres,
+            apellidos = cliente.apellidos,
+            direccion = cliente.direccion,
+            telefono = cliente.telefono,
+            fecha_nacimiento = cliente.fecha_nacimiento
+        };
+
+        modoEdicion = true;
+
+        mensaje = string.Empty;
+        error = string.Empty;
+
+        mostrarModal = true;
+    }
+
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        guardando = false;
+    }
+
+
+    private async Task GuardarCliente()
+    {
+        try
+        {
+            guardando = true;
+            error = string.Empty;
+            mensaje = string.Empty;
+
+            HttpResponseMessage respuesta;
+
+            if (modoEdicion)
+            {
+                respuesta = await Http.PutAsJsonAsync(
+                    $"api/Clientes/{clienteActual.Id_cliente}",
+                    clienteActual);
+            }
+            else
+            {
+                respuesta = await Http.PostAsJsonAsync(
+                    "api/Clientes",
+                    clienteActual);
+            }
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mostrarModal = false;
+
+                mensaje = modoEdicion
+                    ? "Cliente actualizado correctamente."
+                    : "Cliente creado correctamente.";
+
+                paginaActual = 1;
+
+                await CargarClientes();
+            }
+            else
+            {
+                var detalle = await respuesta.Content.ReadAsStringAsync();
+
+                error =
+                    $"No se pudo guardar el cliente. " +
+                    $"Código HTTP: {(int)respuesta.StatusCode}. {detalle}";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al guardar el cliente: {ex.Message}";
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+
+    private void SolicitarEliminar(ClienteModel cliente)
+    {
+        clienteEliminar = cliente;
+        mostrarConfirmacion = true;
+
+        mensaje = string.Empty;
+        error = string.Empty;
+    }
+
+
+    private void CerrarConfirmacion()
+    {
+        mostrarConfirmacion = false;
+        clienteEliminar = null;
+        eliminando = false;
+    }
+
+
+    private async Task EliminarCliente()
+    {
+        if (clienteEliminar is null)
+        {
+            return;
+        }
+
+        try
+        {
+            eliminando = true;
+            error = string.Empty;
+            mensaje = string.Empty;
+
+            var respuesta = await Http.DeleteAsync(
+                $"api/Clientes/{clienteEliminar.Id_cliente}");
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mostrarConfirmacion = false;
+
+                mensaje = "Cliente eliminado correctamente.";
+
+                clienteEliminar = null;
+
+                await CargarClientes();
+
+                if (paginaActual > TotalPaginas)
+                {
+                    paginaActual = TotalPaginas;
+                }
+            }
+            else
+            {
+                var detalle = await respuesta.Content.ReadAsStringAsync();
+
+                error =
+                    $"No se pudo eliminar el cliente. " +
+                    $"Código HTTP: {(int)respuesta.StatusCode}. {detalle}";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al eliminar el cliente: {ex.Message}";
+        }
+        finally
+        {
+            eliminando = false;
+        }
+    }
+
+
+    private void PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+        }
+    }
+
+
+    private void PaginaSiguiente()
+    {
+        if (paginaActual < TotalPaginas)
+        {
+            paginaActual++;
+        }
+    }
+
+
+    private void IrPagina(int pagina)
+    {
+        if (pagina >= 1 && pagina <= TotalPaginas)
+        {
+            paginaActual = pagina;
+        }
+    }
+
+
+    public class ClienteModel
+    {
+        public int Id_cliente { get; set; }
+
+        public string? cui { get; set; }
+
+        public string? nit { get; set; }
+
+        [Required(ErrorMessage = "Los nombres son obligatorios.")]
+        [StringLength(100, ErrorMessage = "Los nombres no pueden superar los 100 caracteres.")]
+        public string? nombres { get; set; }
+
+        [Required(ErrorMessage = "Los apellidos son obligatorios.")]
+        [StringLength(100, ErrorMessage = "Los apellidos no pueden superar los 100 caracteres.")]
+        public string? apellidos { get; set; }
+
+        [StringLength(250, ErrorMessage = "La dirección no puede superar los 250 caracteres.")]
+        public string? direccion { get; set; }
+
+        [StringLength(30, ErrorMessage = "El teléfono no puede superar los 30 caracteres.")]
+        public string? telefono { get; set; }
+
+        public DateTime? fecha_nacimiento { get; set; }
+    }
+}
